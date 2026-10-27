@@ -109,6 +109,9 @@ export class MpvPlayer extends BasePlayer {
         if (!this.mpvInstance || infos.length === 0) {
             throw new Error('MPV实例未启动或播放列表为空');
         }
+        if (pos < 0 || pos >= infos.length) {
+            throw new Error(`播放列表位置越界: ${pos}`);
+        }
 
         try {
             // 保存播放列表信息

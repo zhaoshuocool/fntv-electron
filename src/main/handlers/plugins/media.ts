@@ -17,7 +17,7 @@ import { resolveBundledMpvPath } from '../../common/mpvConfigHelpers';
 import { getProxySecret } from '../../common/proxy';
 import { createProxyPlaybackUrl, registerPlaybackSession } from '../../common/proxySession';
 import { resolveLiveProxyUrl } from '../../common/systemProxy';
-import { buildLivePlaylist, liveProxyTargetUrl, pickLiveEntry, shouldRecordForGuid } from '../../common/livePlayback';
+import { buildLivePlaylist, livePlaylistPosition, liveProxyTargetUrl, pickLiveEntry, shouldRecordForGuid } from '../../common/livePlayback';
 import { getAccessCookieHeader } from '../../../modules/fn_api/accessGrant';
 
 /**
@@ -280,7 +280,7 @@ async function switchLiveChannel(player: ply.BasePlayer & ply.LiveSwitcher, requ
         playLink: createProxyPlaybackUrl(session, item.itemGuid, item.sourceIndex ?? 0),
     }));
 
-    const pos = links.indexOf(entry as ply.PlayItem);
+    const pos = livePlaylistPosition(playlist, request.sourceIndex);
     log.info('切换直播频道:', response.data.item?.title, '线路:', entry?.title);
     if (!(await player.switchPlaylist(links, pos))) {
         log.error('直播换台失败，播放列表未能加载');

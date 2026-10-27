@@ -88,6 +88,28 @@ func applyPlaybackCookie(headers map[string]string, useCloudDirect bool, cloudCo
 	headers["Cookie"] = fnapi.ComposeCookieHeader(accessCookie)
 }
 
+// liveInfoFor 只在直播路径上调用：play/list 失败或没有视频流时才查一次 play/info，
+// 点播有视频流时不会多这一次调用。
+func liveInfoFor(fnApi *fnapi.ApiService, itemGuid string) *fnapi.PlayInfo {
+	info, err := fnApi.GetPlayInfoCached(itemGuid)
+	if err != nil || !info.Success || info.Data.Type != "LiveChannel" {
+		return nil
+	}
+	return &info.Data
+}
+
+func serveLiveChannel(c *gin.Context, info *fnapi.PlayInfo, session *PlaybackSession, params *PlayVideoParams) {
+	target := SelectLiveChannel(*info, int(params.SourceIndex))
+	if target == nil {
+		logger.Warnf("直播频道没有可播放线路: itemGuid=%s", params.ItemGuid)
+		c.JSON(404, gin.H{"error": "no playable live line"})
+		return
+	}
+
+	logger.Infof("直播线路透传 | itemGuid: %s | 线路: %s", params.ItemGuid, target.FileName)
+	ServeLive(c, target, ProxyLiveEntry(c, params.ItemGuid), utils.PassthroughHeaders(c.Request), utils.NewTransportWithProxy(session.ProxyURL, session.SkipVerify), session.ProxyURL, session.SkipVerify)
+}
+
 func PlayVideoHandler(c *gin.Context, sessions *PlaybackSessionStore) {
 	params, err := parseQueryParam(c)
 	if err != nil {
@@ -106,29 +128,23 @@ func PlayVideoHandler(c *gin.Context, sessions *PlaybackSessionStore) {
 	fnApi := fnapi.NewApiService(session.Domain, session.Token, session.SkipVerify, session.AccessCookie)
 	resp, err := fnApi.GetStreamListCached(params.ItemGuid)
 	if err != nil || !resp.Success {
+		// 直播项没有媒体文件，play/list 可能直接失败；这里也要按直播处理
+		if live := liveInfoFor(fnApi, params.ItemGuid); live != nil {
+			serveLiveChannel(c, live, session, params)
+			return
+		}
 		logger.Errorf("获取播放信息失败或为空: %v", err)
 		c.JSON(500, gin.H{"error": "Failed to get play info"})
 		return
 	}
 
-	// 直播频道没有视频流：走直播线路透传分支
 	if len(resp.Data.VideoStreams) == 0 {
-		info, err := fnApi.GetPlayInfoCached(params.ItemGuid)
-		if err != nil || !info.Success || info.Data.Type != "LiveChannel" {
-			logger.Errorf("直播项解析失败: %v", err)
-			c.JSON(500, gin.H{"error": "Failed to get play info"})
+		if live := liveInfoFor(fnApi, params.ItemGuid); live != nil {
+			serveLiveChannel(c, live, session, params)
 			return
 		}
-
-		target := SelectLiveChannel(info.Data, int(params.SourceIndex))
-		if target == nil {
-			logger.Warnf("直播频道没有可播放线路: itemGuid=%s", params.ItemGuid)
-			c.JSON(404, gin.H{"error": "no playable live line"})
-			return
-		}
-
-		logger.Infof("直播线路透传 | itemGuid: %s | 线路: %s", params.ItemGuid, target.FileName)
-		ServeLive(c, target, utils.PassthroughHeaders(c.Request), utils.NewTransportWithProxy(session.ProxyURL, session.SkipVerify), session.ProxyURL)
+		logger.Warnf("播放信息里没有视频流: itemGuid=%s", params.ItemGuid)
+		c.JSON(404, gin.H{"error": "no playable stream"})
 		return
 	}
 

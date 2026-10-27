@@ -8,6 +8,7 @@ const {
     buildLivePlaylist,
     shouldRecordForGuid,
     pickLiveEntry,
+    livePlaylistPosition,
 } = require('../dest/main/common/livePlayback.js');
 const { isLivePlaylistItem } = require('../dest/modules/players/liveItem.js');
 
@@ -97,6 +98,16 @@ test('a live source index falls back to the first playable entry', () => {
     };
     const mixedPlaylist = buildLivePlaylist(mixed, (index) => `p://x/${index}`);
     assert.equal(pickLiveEntry(mixedPlaylist, 2), mixedPlaylist[1], 'skipped line keeps its sorted index');
+});
+
+// 播放器收到的是带 playLink 的副本，位置必须是副本数组里的下标，不能拿原数组的元素去 indexOf
+test('the switch position is the index the player will receive', () => {
+    const playlist = buildLivePlaylist(info, (index) => `p://x/${index}`);
+    const links = playlist.map((item) => ({ ...item, playLink: `http://proxy/${item.sourceIndex}` }));
+    assert.equal(livePlaylistPosition(playlist, 1), links.indexOf(links[1]));
+    assert.equal(livePlaylistPosition(playlist, 1), 1);
+    assert.equal(livePlaylistPosition(playlist, 9), 0, 'out of range falls back to the first entry');
+    assert.equal(livePlaylistPosition([], 0), -1);
 });
 
 test('the play handler builds a live playlist and gates records through the guard', () => {

@@ -46,6 +46,16 @@ export function pickLiveEntry(playlist: PlayItem[], sourceIndex: number): PlayIt
 }
 
 /**
+ * 播放器拿到的是带 playLink 的副本数组，位置必须是副本里的下标，
+ * 不能拿原数组的元素去 indexOf（那样永远是 -1）。越界回退第一条。
+ */
+export function livePlaylistPosition(playlist: PlayItem[], sourceIndex: number): number {
+    if (playlist.length === 0) return -1;
+    const match = playlist.findIndex((entry) => entry.sourceIndex === sourceIndex);
+    return match >= 0 ? match : 0;
+}
+
+/**
  * 系统代理查询要按直播上游线路的域名判断，不能拿 NAS 域名的结果代替：
  * 需要翻墙的是线路的服务器，不是飞牛本身。
  */

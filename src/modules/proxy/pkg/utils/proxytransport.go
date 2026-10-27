@@ -44,28 +44,37 @@ func NewTransportWithProxy(proxyURL string, skipVerify bool) *http.Transport {
 }
 
 // FetchLive 请求直播资源；配了代理但代理不可达时回退直连，并记录实际走的是哪条路。
-func FetchLive(ctx context.Context, target string, headers map[string]string, transport *http.Transport, proxyURL string) (*http.Response, error) {
+// 返回第二个值表示这次实际走的是代理还是直连。
+// 这里不设 http.Client.Timeout：直播分片要持续读流，整请求超时会把分片掐断；
+// 超时由 transport 的 ResponseHeaderTimeout 和请求 context 控制。
+func FetchLive(ctx context.Context, target string, headers map[string]string, transport *http.Transport, proxyURL string, skipVerify bool) (*http.Response, bool, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
 
-	client := &http.Client{Transport: transport, Timeout: liveTransportTimeout}
+	client := &http.Client{Transport: transport}
 	response, err := client.Do(request)
 	if err == nil {
 		if proxyURL != "" {
 			logger.Infof("直播请求走代理: %s", proxyURL)
+			return response, true, nil
 		}
-		return response, nil
+		logger.Infof("直播请求直连: %s", request.URL.Host)
+		return response, false, nil
 	}
 
 	if proxyURL == "" {
-		return nil, err
+		return nil, false, err
 	}
 
 	logger.Warnf("直播代理不可达，回退直连: %v", err)
-	return (&http.Client{Transport: NewTransportWithProxy("", false), Timeout: liveTransportTimeout}).Do(request)
+	response, err = (&http.Client{Transport: NewTransportWithProxy("", skipVerify)}).Do(request)
+	if err != nil {
+		return nil, false, err
+	}
+	return response, false, nil
 }

@@ -18,7 +18,16 @@ func socksDialer(proxy *url.URL) func(ctx context.Context, network, addr string)
 		if err != nil {
 			return nil, err
 		}
+		// 握手要有超时，否则一个不回包的代理会把这条连接挂死
+		if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
 		if err := socksConnect(conn, addr); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+		if err := conn.SetReadDeadline(time.Time{}); err != nil {
 			_ = conn.Close()
 			return nil, err
 		}
@@ -50,11 +59,18 @@ func socksConnect(conn net.Conn, addr string) error {
 	}
 
 	message := []byte{0x05, 0x01, 0x00}
-	if ip := net.ParseIP(host); ip != nil && len(ip) == 16 {
-		message = append(message, 0x04)
-		message = append(message, ip...)
+	// 地址类型按 RFC 1928：0x01 IPv4（4 字节）、0x03 域名、0x04 IPv6。
+	// net.ParseIP 对 IPv4 也返回 16 字节的 v4-mapped，必须用 To4() 判断，否则严格的服务端会拒绝。
+	if ip := net.ParseIP(host); ip != nil {
+		if v4 := ip.To4(); v4 != nil {
+			message = append(message, 0x01)
+			message = append(message, v4...)
+		} else {
+			message = append(message, 0x04)
+			message = append(message, ip...)
+		}
 	} else {
-		message = append(message, 0x01, byte(len(host)))
+		message = append(message, 0x03, byte(len(host)))
 		message = append(message, []byte(host)...)
 	}
 	message = append(message, byte(port>>8), byte(port&0xff))
@@ -63,23 +79,34 @@ func socksConnect(conn net.Conn, addr string) error {
 		return err
 	}
 
-	response := make([]byte, 5)
-	if _, err := io.ReadFull(conn, response); err != nil {
+	reply := make([]byte, 4)
+	if _, err := io.ReadFull(conn, reply); err != nil {
 		return err
 	}
-	if response[0] != 0x05 || response[1] != 0x00 {
+	if reply[0] != 0x05 || reply[1] != 0x00 {
 		return errors.New("socks5 CONNECT 失败")
 	}
 
-	switch response[3] {
+	var addressLength int
+	switch reply[3] {
 	case 0x01:
-		_, err = io.ReadFull(conn, make([]byte, 6))
-	case 0x04:
-		_, err = io.ReadFull(conn, make([]byte, 18))
+		addressLength = 4
 	case 0x03:
-		_, err = io.ReadFull(conn, make([]byte, int(response[4])+2))
+		length := make([]byte, 1)
+		if _, err := io.ReadFull(conn, length); err != nil {
+			return err
+		}
+		addressLength = int(length[0])
+	case 0x04:
+		addressLength = 16
 	default:
 		return errors.New("socks5 返回了无法解析的地址")
 	}
-	return err
+	if _, err := io.ReadFull(conn, make([]byte, addressLength)); err != nil {
+		return err
+	}
+	if _, err := io.ReadFull(conn, make([]byte, 2)); err != nil {
+		return err
+	}
+	return nil
 }

@@ -18,6 +18,7 @@ test('mpv switches the live playlist on the running instance and skips live subt
     );
     assert.match(compiled, /switchPlaylist\(/);
     assert.match(compiled, /isLivePlaylistItem/);
+    assert.match(compiled, /pos < 0 \|\| pos >= infos\.length/, 'a position outside the list must be rejected, not read as infos[-1]');
 });
 
 test('the play handler switches a live channel instead of ignoring the request', () => {
@@ -26,4 +27,6 @@ test('the play handler switches a live channel instead of ignoring the request',
         'utf8',
     );
     assert.match(compiled, /hasLiveSwitch/);
+    assert.match(compiled, /livePlaylistPosition/);
+    assert.doesNotMatch(compiled, /links\.indexOf\(entry\)/, 'position must not be looked up in the copied array');
 });
