@@ -8,6 +8,7 @@ import * as log from '../../../modules/logger';
 import * as os from 'os';
 import * as fs from 'fs';
 import { PlayStatusData, ItemListRequest } from '../../../modules/fn_api/types';
+import { hasLiveSwitch } from '../../../modules/players/liveSwitch';
 import { isTrusted } from '../../../modules/cert_trust';
 import { checkLibraryPageUrl } from '../../common/utils';
 import { getMainWindow } from '../../common/mainwin';
@@ -235,10 +236,67 @@ function eventHandler(fnapi: fn.ApiService, playlist: ply.PlayItem[]) {
     };
 }
 
+// 直播换台：复用当前 mpv 实例，只换播放列表
+async function switchLiveChannel(player: ply.BasePlayer & ply.LiveSwitcher, request: PlayRequest): Promise<void> {
+    const config = fnConfig.readConfig();
+    if (!config?.domain || !config.token || !config.account) {
+        log.error('无法找到有效的服务器登录配置');
+        return;
+    }
+
+    const fnapi = new fn.ApiService(config.domain, config.token);
+    const response = await fnapi.getPlayInfo(request.id);
+    if (!response.success || !response.data) {
+        log.error('获取播放信息失败:', response ? response.message : '未知错误');
+        return;
+    }
+
+    if (response.data.type !== 'LiveChannel') {
+        log.warn('直播切换收到非直播项:', request.id);
+        return;
+    }
+
+    const playlist = buildLivePlaylist(response.data, () => '');
+    if (playlist.length === 0) {
+        log.warn('直播频道没有可播放线路:', request.id);
+        return;
+    }
+
+    const entry = pickLiveEntry(playlist, request.sourceIndex);
+    const session = await registerPlaybackSession(getProxySecret(), {
+        token: config.token,
+        account: config.account,
+        domain: config.domain,
+        accessCookie: getAccessCookieHeader(config.domain),
+        skipVerify: isTrusted(config.domain),
+        useNasLocal: config.nasProxyEnabled === true,
+        itemGuids: playlist.map(item => item.itemGuid),
+    });
+    const links = playlist.map(item => ({
+        ...item,
+        playLink: createProxyPlaybackUrl(session, item.itemGuid, item.sourceIndex ?? 0),
+    }));
+
+    const pos = links.indexOf(entry as ply.PlayItem);
+    log.info('切换直播频道:', response.data.item?.title, '线路:', entry?.title);
+    if (!(await player.switchPlaylist(links, pos))) {
+        log.error('直播换台失败，播放列表未能加载');
+    }
+}
+
 // 处理播放事件
 async function handlePlayMovie(_event: IpcMainEvent, request: PlayRequest): Promise<void> {
-    if (playbackStarting || currentPlayer?.isPlaying()) {
-        log.warn('播放器正在启动或播放，忽略重复播放请求');
+    if (playbackStarting) {
+        log.warn('播放器正在启动，忽略重复播放请求');
+        return;
+    }
+
+    if (currentPlayer?.isPlaying()) {
+        if (hasLiveSwitch(currentPlayer)) {
+            await switchLiveChannel(currentPlayer, request);
+            return;
+        }
+        log.warn('播放器正在播放，忽略重复播放请求');
         return;
     }
 

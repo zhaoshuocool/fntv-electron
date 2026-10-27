@@ -121,6 +121,11 @@ export abstract class BasePlayer {
 // 播放器构造函数类型
 export type PlayerConstructor = new (config: Config) => BasePlayer;
 
+/** 直播播放器可以在不重启实例的情况下换掉当前播放列表 */
+export interface LiveSwitcher {
+    switchPlaylist(infos: PlayItem[], pos: number): Promise<boolean>;
+}
+
 // 播放器注册表接口
 export interface PlayerRegistry {
     [key: string]: PlayerConstructor;

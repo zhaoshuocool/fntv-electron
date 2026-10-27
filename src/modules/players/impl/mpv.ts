@@ -13,6 +13,7 @@ import {
     PlayItem // <-- Add PlayItem to the import list
 } from '../types';
 import { PlayerFactory } from '../factory';
+import { isLivePlaylistItem } from '../liveItem';
 import log from '../../logger';
 import NodeMpv, { TimePosition } from 'node-mpv-2';
 
@@ -80,6 +81,23 @@ export class MpvPlayer extends BasePlayer {
                 message: error.message || error.toString()
             };
             this.emitEvent(EventType.ERROR, errorEvent);
+            return false;
+        }
+    }
+
+    /**
+     * 直播换台：复用同一个 mpv 实例换播放列表，不重启进程
+     */
+    async switchPlaylist(infos: PlayItem[], pos: number): Promise<boolean> {
+        if (!this.mpvInstance || !this.mpvInstance.isRunning()) {
+            return false;
+        }
+
+        try {
+            await this.loadPlaylistItems(infos, pos);
+            return true;
+        } catch (error: any) {
+            log.error('切换直播播放列表失败:', error);
             return false;
         }
     }
@@ -265,6 +283,11 @@ export class MpvPlayer extends BasePlayer {
                         // 使用重试机制进行跳转, 这里粗暴了点, 视频没加载没法跳，只能重试
                         this.seekWithRetry(currentItem.ts, 50000, 10);
                     }
+                }
+
+                if (isLivePlaylistItem(currentItem)) {
+                    // 直播没有字幕流，跳过下载
+                    return;
                 }
 
                 const fnapi = this.getFnApi();
