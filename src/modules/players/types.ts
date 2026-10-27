@@ -17,6 +17,8 @@ export interface PlayItem {
     ts: number;
     duration: number;
     playLink: string;
+    /** 直播播放项：不写进度、不下载字幕 */
+    live?: boolean;
 }
 
 // 播放状态数据

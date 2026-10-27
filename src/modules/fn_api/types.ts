@@ -115,6 +115,8 @@ export interface PlayInfo {
     subtitle_guid: string;
     /** 媒体文件的唯一标识符，用于获取播放链接 */
     media_guid: string;
+    /** 直播频道线路列表（仅 LiveChannel 类型返回） */
+    live_channels?: LiveChannel[] | null;
     /** 详细的项目信息 */
     item: {
         /** 项目唯一标识符 */
@@ -178,6 +180,26 @@ export interface PlayInfo {
         /** 逻辑类型标识 */
         logic_type: number;
     };
+}
+
+/**
+ * 直播频道线路（IPTV 源）
+ */
+export interface LiveChannel {
+    /** 线路唯一标识符 */
+    guid: string;
+    /** 可直接播放的 URL（飞牛分享路径） */
+    path: string;
+    /** 线路名称，如"线路1" */
+    file_name: string;
+    /** 源类型 */
+    type: number;
+    /** 排序序号，决定线路顺序 */
+    sort_num: number;
+    /** 是否可播放，1表示可播放 */
+    can_play: number;
+    /** 播放错误信息，空字符串表示无错误 */
+    play_error: string;
 }
 
 /**
