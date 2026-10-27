@@ -44,3 +44,12 @@ export function pickLiveEntry(playlist: PlayItem[], sourceIndex: number): PlayIt
     const match = playlist.find((entry) => entry.sourceIndex === sourceIndex);
     return match ?? playlist[0];
 }
+
+/**
+ * 系统代理查询要按直播上游线路的域名判断，不能拿 NAS 域名的结果代替：
+ * 需要翻墙的是线路的服务器，不是飞牛本身。
+ */
+export function liveProxyTargetUrl(info: PlayInfo): string {
+    const playable = sortLiveChannels(info.live_channels ?? []).find((channel) => channel.can_play === 1);
+    return playable?.path ?? '';
+}

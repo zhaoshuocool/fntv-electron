@@ -9,6 +9,8 @@ interface PlaybackSessionInput {
     skipVerify: boolean;
     useNasLocal: boolean;
     itemGuids: string[];
+    /** 仅直播上游走这里；空串表示直连 */
+    proxyUrl?: string;
 }
 
 interface PlaybackSessionResponse {

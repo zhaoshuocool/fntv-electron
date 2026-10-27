@@ -32,6 +32,8 @@ func newRouter(secret string) *gin.Engine {
 	sessions := api.NewPlaybackSessionStore()
 	r.POST("/api/v1/session", api.CreatePlaybackSessionHandler(secret, sessions))
 	r.GET("/api/v1/playvideo/:itemGuid", func(c *gin.Context) { api.PlayVideoHandler(c, sessions) })
+	r.GET("/api/v1/live/:itemGuid", func(c *gin.Context) { api.ServeLiveHandler(c, sessions) })
+	r.GET("/api/v1/live/:itemGuid/*rest", func(c *gin.Context) { api.ServeLiveHandler(c, sessions) })
 	r.GET("/api/v1/skipinfo/:itemGuid", func(c *gin.Context) { api.GetSkipInfoHandler(c, sessions) })
 	r.POST("/api/v1/skipinfo", func(c *gin.Context) { api.SetSkipInfoHandler(c, sessions) })
 

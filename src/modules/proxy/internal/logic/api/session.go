@@ -23,6 +23,7 @@ type PlaybackSessionRequest struct {
 	SkipVerify   bool     `json:"skipVerify"`
 	UseNasLocal  bool     `json:"useNasLocal"`
 	ItemGuids    []string `json:"itemGuids"`
+	ProxyURL     string   `json:"proxyUrl,omitempty"`
 }
 
 type PlaybackSession struct {
@@ -53,6 +54,9 @@ func (s *PlaybackSessionStore) Create(req PlaybackSessionRequest) (string, error
 	}
 	if len(req.AccessCookie) > 16384 || strings.ContainsAny(req.AccessCookie, "\r\n") {
 		return "", errors.New("invalid access cookie")
+	}
+	if len(req.ProxyURL) > 256 || strings.ContainsAny(req.ProxyURL, "\r\n") {
+		return "", errors.New("invalid proxy url")
 	}
 
 	allowedItems := make(map[string]struct{}, len(req.ItemGuids))

@@ -63,3 +63,28 @@ func TestPlaybackSessionRejectsCookieHeaderInjection(t *testing.T) {
 		t.Fatal("expected invalid access cookie to be rejected")
 	}
 }
+
+func TestPlaybackSessionRejectsProxyHeaderInjection(t *testing.T) {
+	store := NewPlaybackSessionStore()
+	_, err := store.Create(PlaybackSessionRequest{
+		Token:     "token",
+		Account:   "account",
+		Domain:    "https://nas.example",
+		ProxyURL:  "http://127.0.0.1:7890\r\nX-Injected: yes",
+		ItemGuids: []string{"item"},
+	})
+	if err == nil {
+		t.Fatal("expected invalid proxy url to be rejected")
+	}
+
+	session := &PlaybackSessionRequest{
+		Token:     "token",
+		Account:   "account",
+		Domain:    "https://nas.example",
+		ProxyURL:  "socks5://127.0.0.1:1080",
+		ItemGuids: []string{"item"},
+	}
+	if _, err := store.Create(*session); err != nil {
+		t.Fatalf("valid proxy url should be accepted: %v", err)
+	}
+}

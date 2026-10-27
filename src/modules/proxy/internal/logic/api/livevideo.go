@@ -1,22 +1,19 @@
 package api
 
 import (
-	"crypto/tls"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
 	"sort"
 	"strings"
-	"time"
 
 	"proxy/pkg/fnapi"
 	"proxy/pkg/logger"
+	"proxy/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
-
-const liveFetchTimeout = 120 * time.Second
 
 // SelectLiveChannel 按 sort_num 取线路；sourceIndex 越界或不可播时回退到第一条可播线路。
 func SelectLiveChannel(info fnapi.PlayInfo, sourceIndex int) *fnapi.LiveChannel {
@@ -85,34 +82,15 @@ func ResolveLiveURL(target *fnapi.LiveChannel, subPath string) *url.URL {
 	return resolved
 }
 
-// newLiveTransport 构造直播请求用的 transport（Task 7 换成带代理支持的版本）。
-func newLiveTransport(skipVerify bool) *http.Transport {
-	return &http.Transport{
-		ResponseHeaderTimeout: liveFetchTimeout,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: skipVerify},
-	}
-}
-
-// ServeLive 透传直播响应：播放列表改写相对 URI，其余内容原样转发。
-func ServeLive(c *gin.Context, target *fnapi.LiveChannel, extraHeaders map[string]string, transport *http.Transport) {
+// ServeLive 透传直播响应：播放列表改写相对 URI（改写回 proxy 入口，分片同样经过 proxy），其余内容原样转发。
+func ServeLive(c *gin.Context, target *fnapi.LiveChannel, extraHeaders map[string]string, transport *http.Transport, proxyURL string) {
 	requested := ResolveLiveURL(target, c.Param("rest"))
 	if requested == nil {
 		c.JSON(400, gin.H{"error": "Invalid live line URL"})
 		return
 	}
 
-	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, requested.String(), nil)
-	if err != nil {
-		logger.Errorf("直播请求构造失败: %v", err)
-		c.JSON(400, gin.H{"error": "Invalid live request"})
-		return
-	}
-	for key, value := range extraHeaders {
-		request.Header.Set(key, value)
-	}
-
-	client := &http.Client{Transport: transport, Timeout: liveFetchTimeout}
-	response, err := client.Do(request)
+	response, err := utils.FetchLive(c.Request.Context(), requested.String(), extraHeaders, transport, proxyURL)
 	if err != nil {
 		logger.Errorf("直播线路请求失败: %v", err)
 		c.JSON(502, gin.H{"error": "Live line unreachable"})
@@ -141,4 +119,36 @@ func ServeLive(c *gin.Context, target *fnapi.LiveChannel, extraHeaders map[strin
 	entry := *c.Request.URL
 	entry.Path = strings.TrimSuffix(entry.Path, "/") + "/"
 	_, _ = io.WriteString(c.Writer, RewriteHlsPlaylist(string(body), &entry))
+}
+
+// ServeLiveHandler 处理 /api/v1/live/:itemGuid 及其下的相对路径（播放列表改写后仍回到这里）。
+func ServeLiveHandler(c *gin.Context, sessions *PlaybackSessionStore) {
+	params, err := parseQueryParam(c)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid parameters"})
+		return
+	}
+
+	session, err := sessions.Resolve(params.Session, params.ItemGuid)
+	if err != nil {
+		logger.Warnf("拒绝无效播放会话: itemGuid=%s", params.ItemGuid)
+		c.JSON(401, gin.H{"error": "Invalid playback session"})
+		return
+	}
+
+	fnApi := fnapi.NewApiService(session.Domain, session.Token, session.SkipVerify, session.AccessCookie)
+	info, err := fnApi.GetPlayInfoCached(params.ItemGuid)
+	if err != nil || !info.Success || info.Data.Type != "LiveChannel" {
+		logger.Errorf("直播项解析失败: %v", err)
+		c.JSON(500, gin.H{"error": "Failed to get play info"})
+		return
+	}
+
+	target := SelectLiveChannel(info.Data, int(params.SourceIndex))
+	if target == nil {
+		c.JSON(404, gin.H{"error": "no playable live line"})
+		return
+	}
+
+	ServeLive(c, target, utils.PassthroughHeaders(c.Request), utils.NewTransportWithProxy(session.ProxyURL, session.SkipVerify), session.ProxyURL)
 }

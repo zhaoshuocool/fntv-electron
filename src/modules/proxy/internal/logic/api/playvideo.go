@@ -128,7 +128,7 @@ func PlayVideoHandler(c *gin.Context, sessions *PlaybackSessionStore) {
 		}
 
 		logger.Infof("直播线路透传 | itemGuid: %s | 线路: %s", params.ItemGuid, target.FileName)
-		ServeLive(c, target, utils.PassthroughHeaders(c.Request), newLiveTransport(session.SkipVerify))
+		ServeLive(c, target, utils.PassthroughHeaders(c.Request), utils.NewTransportWithProxy(session.ProxyURL, session.SkipVerify), session.ProxyURL)
 		return
 	}
 

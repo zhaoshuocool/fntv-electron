@@ -28,6 +28,9 @@ export interface Config {
     macCloseAction?: 'minimize' | 'quit' | 'ask';
     trayNotificationShown?: boolean;
     nasProxyEnabled?: boolean;
+    liveProxyEnabled?: boolean;
+    liveProxyUrl?: string;
+    liveProxyFollowSystem?: boolean;
     mpvPlayerPath?: string;
     mpvVolume?: number;
     exitMode?: 'direct' | 'minimize' | 'ask';
@@ -83,8 +86,22 @@ export interface DownloadProxyConfig {
 }
 
 /**
- * 设置下载代理配置参数接口
+ * 直播代理配置（只对直播上游请求生效）
  */
+export interface LiveProxyConfig {
+    enabled: boolean;
+    proxyUrl: string;
+    followSystem: boolean;
+}
+
+/**
+ * 设置直播代理配置参数接口
+ */
+export interface SetLiveProxyConfigParams {
+    enabled?: boolean;
+    proxyUrl?: string;
+    followSystem?: boolean;
+}
 export interface SetDownloadProxyConfigParams {
     enabled?: boolean;
     proxyUrl?: string;
@@ -270,6 +287,29 @@ export function setDownloadProxyConfig({ enabled = true, proxyUrl = 'https://ghf
     writeConfig(config);
 }
 
+// 获取直播代理配置（默认关闭：只有明确开启才走代理）
+export function getLiveProxyConfig(): LiveProxyConfig {
+    const config = readConfig() || {};
+    return {
+        enabled: config.liveProxyEnabled === true,
+        proxyUrl: config.liveProxyUrl || '',
+        followSystem: config.liveProxyFollowSystem === true,
+    };
+}
+
+// 设置直播代理配置
+export function setLiveProxyConfig({
+    enabled = false,
+    proxyUrl = '',
+    followSystem = false,
+}: SetLiveProxyConfigParams = {}): void {
+    const config = readConfig() || {};
+    config.liveProxyEnabled = enabled;
+    config.liveProxyUrl = proxyUrl;
+    config.liveProxyFollowSystem = followSystem;
+    writeConfig(config);
+}
+
 // 获取是否启用 MPV 播放接管（沿用旧字段以兼容已有配置）
 export function getHideOriginalPlayButton(): boolean {
     const config: Config = readConfig() || {};
@@ -392,6 +432,8 @@ module.exports = {
     setDownloadProxyUrl,
     getDownloadProxyConfig,
     setDownloadProxyConfig,
+    getLiveProxyConfig,
+    setLiveProxyConfig,
     getHideOriginalPlayButton,
     setHideOriginalPlayButton,
     getNasProxyEnabled,

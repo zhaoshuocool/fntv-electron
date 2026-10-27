@@ -16,7 +16,8 @@ import { getMpvConfigDir } from './mpvConfig';
 import { resolveBundledMpvPath } from '../../common/mpvConfigHelpers';
 import { getProxySecret } from '../../common/proxy';
 import { createProxyPlaybackUrl, registerPlaybackSession } from '../../common/proxySession';
-import { buildLivePlaylist, pickLiveEntry, shouldRecordForGuid } from '../../common/livePlayback';
+import { resolveLiveProxyUrl } from '../../common/systemProxy';
+import { buildLivePlaylist, liveProxyTargetUrl, pickLiveEntry, shouldRecordForGuid } from '../../common/livePlayback';
 import { getAccessCookieHeader } from '../../../modules/fn_api/accessGrant';
 
 /**
@@ -263,6 +264,7 @@ async function switchLiveChannel(player: ply.BasePlayer & ply.LiveSwitcher, requ
     }
 
     const entry = pickLiveEntry(playlist, request.sourceIndex);
+    const liveProxyUrl = await resolveLiveProxyUrl(fnConfig.getLiveProxyConfig(), liveProxyTargetUrl(response.data));
     const session = await registerPlaybackSession(getProxySecret(), {
         token: config.token,
         account: config.account,
@@ -271,6 +273,7 @@ async function switchLiveChannel(player: ply.BasePlayer & ply.LiveSwitcher, requ
         skipVerify: isTrusted(config.domain),
         useNasLocal: config.nasProxyEnabled === true,
         itemGuids: playlist.map(item => item.itemGuid),
+        proxyUrl: liveProxyUrl ?? '',
     });
     const links = playlist.map(item => ({
         ...item,
@@ -401,6 +404,8 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
         throw new Error('当前播放项不在生成的播放列表中');
     }
 
+    const liveProxyUrl = isLive ? await resolveLiveProxyUrl(fnConfig.getLiveProxyConfig(), liveProxyTargetUrl(response.data)) : '';
+
     const session = await registerPlaybackSession(getProxySecret(), {
         token: config.token,
         account: config.account,
@@ -409,6 +414,7 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
         skipVerify: isTrusted(config.domain),
         useNasLocal: config.nasProxyEnabled === true,
         itemGuids: playList.map(item => item.itemGuid),
+        proxyUrl: liveProxyUrl ?? '',
     });
     playList = playList.map(item => ({
         ...item,

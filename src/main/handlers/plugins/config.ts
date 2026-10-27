@@ -72,6 +72,26 @@ function handleSetNasProxyConfig(event: IpcMainEvent, { nasProxyEnabled }: { nas
     }
 }
 
+// 获取直播代理配置（只对直播上游生效）
+function handleGetLiveProxyConfig(event: IpcMainEvent): void {
+    event.reply('live-proxy-info', fnConfig.getLiveProxyConfig());
+}
+
+// 设置直播代理配置：开关关闭时保持关闭，缺省不会自动打开
+function handleSetLiveProxyConfig(event: IpcMainEvent, config?: Partial<fnConfig.LiveProxyConfig>): void {
+    try {
+        fnConfig.setLiveProxyConfig({
+            enabled: config?.enabled === true,
+            proxyUrl: config?.proxyUrl || '',
+            followSystem: config?.followSystem === true,
+        });
+        event.reply('live-proxy-set', { success: true });
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        event.reply('live-proxy-set', { success: false, error: errorMessage });
+    }
+}
+
 // 注册配置相关处理器
 function init(): void {
     registerHandler('get-download-proxy', handleGetDownloadProxy);
@@ -80,6 +100,8 @@ function init(): void {
     registerHandler('set-play-button-config', handleSetPlayButtonConfig);
     registerHandler('get-nas-proxy', handleGetNasProxyConfig);
     registerHandler('set-nas-proxy', handleSetNasProxyConfig);
+    registerHandler('get-live-proxy-config', handleGetLiveProxyConfig);
+    registerHandler('set-live-proxy-config', handleSetLiveProxyConfig);
 }
 
 export {
