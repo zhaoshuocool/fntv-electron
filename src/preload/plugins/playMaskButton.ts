@@ -1,4 +1,5 @@
 import logger from '../core/logger';
+import { shouldTakeLiveCardClick } from '../core/liveClick';
 import {
     findItemGuid,
     getPlayButtonConfig,
@@ -20,13 +21,21 @@ function isCardPlayButton(button: HTMLElement): boolean {
     return Boolean(button.closest('[class*="poster" i], [class*="card" i], a[href]'));
 }
 
+function findLiveCardAnchor(target: Element): HTMLElement | null {
+    const anchor = target.closest<HTMLAnchorElement>('a[href]');
+    return anchor && shouldTakeLiveCardClick(anchor.href) ? anchor : null;
+}
+
 function findManagedPlayButton(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
 
     const button = findSemanticPlayButton(target);
-    if (!button) return null;
-    if (button.dataset.mpvDetailIntercepted === 'true') return button;
-    return isCardPlayButton(button) ? button : null;
+    if (button) {
+        if (button.dataset.mpvDetailIntercepted === 'true') return button;
+        return isCardPlayButton(button) ? button : null;
+    }
+
+    return findLiveCardAnchor(target);
 }
 
 function suppressNativePlayback(event: Event): void {
