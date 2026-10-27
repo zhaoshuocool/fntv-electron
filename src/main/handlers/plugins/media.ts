@@ -15,6 +15,7 @@ import { getMpvConfigDir } from './mpvConfig';
 import { resolveBundledMpvPath } from '../../common/mpvConfigHelpers';
 import { getProxySecret } from '../../common/proxy';
 import { createProxyPlaybackUrl, registerPlaybackSession } from '../../common/proxySession';
+import { buildLivePlaylist, pickLiveEntry, shouldRecordForGuid } from '../../common/livePlayback';
 import { getAccessCookieHeader } from '../../../modules/fn_api/accessGrant';
 
 /**
@@ -122,7 +123,7 @@ async function refreshWindow(): Promise<void> {
  * @param itemGuid - 当前播放项的GUID
  * @returns 事件处理函数
  */
-function eventHandler(fnapi: fn.ApiService) {
+function eventHandler(fnapi: fn.ApiService, playlist: ply.PlayItem[]) {
     return async (type: ply.EventType, data: ply.EventData) => {
         switch (type) {
             case ply.EventType.PROGRESS:
@@ -130,6 +131,11 @@ function eventHandler(fnapi: fn.ApiService) {
 
                 if (progressData.itemGuid.length === 0) {
                     log.info("process itemguid is empty")
+                    return;
+                }
+
+                if (!shouldRecordForGuid(playlist, progressData.itemGuid)) {
+                    log.debug('直播播放项不写播放进度:', progressData.itemGuid);
                     return;
                 }
 
@@ -183,6 +189,11 @@ function eventHandler(fnapi: fn.ApiService) {
 
                 log.info('MPV exited with code:', event.code);
                 log.info('最后播放位置:', event.status);
+
+                if (!shouldRecordForGuid(playlist, event.status.itemGuid)) {
+                    log.debug('直播播放项退出，不写播放进度:', event.status.itemGuid);
+                    return;
+                }
 
                 // if (event.status.percentage > 90) {
                 //     log.info('视频播放接近结束，更新状态...');
@@ -267,7 +278,16 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
     const itemGuid = response.data.guid;
 
     let playList: ply.PlayItem[] = [];
-    if (type === 'Episode' && parentGuid) {
+    const isLive = type === 'LiveChannel';
+
+    if (isLive) {
+        log.info('当前为直播频道，按线路生成播放列表');
+        playList = buildLivePlaylist(response.data, () => '');
+        if (playList.length === 0) {
+            log.warn('直播频道没有可播放线路:', itemGuid);
+            return;
+        }
+    } else if (type === 'Episode' && parentGuid) {
         log.info('当前为剧集，尝试获取系列下的所有剧集进行播放');
         const episodeList = await fnapi.getEpisodeList(parentGuid);
         if (!episodeList.success || !episodeList.data) {
@@ -315,7 +335,10 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
     }
 
     // 寻找当前播放的媒体在数组中的位置
-    const currentIndex = playList.findIndex(item => item.itemGuid === itemGuid);
+    const currentEntry = isLive ? pickLiveEntry(playList, sourceIndex) : null;
+    const currentIndex = isLive
+        ? playList.indexOf(currentEntry as ply.PlayItem)
+        : playList.findIndex(item => item.itemGuid === itemGuid);
     if (currentIndex < 0) {
         throw new Error('当前播放项不在生成的播放列表中');
     }
@@ -331,12 +354,12 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
     });
     playList = playList.map(item => ({
         ...item,
-        playLink: createProxyPlaybackUrl(session, item.itemGuid),
+        playLink: createProxyPlaybackUrl(session, item.itemGuid, item.sourceIndex ?? 0),
     }));
 
-    // 检查是否选择了特定的播放源索引
+    // 检查是否选择了特定的播放源索引（直播已在生成列表时按线路确定）
     const selectedSourceIndex = Number.isInteger(sourceIndex) && sourceIndex > 0 ? sourceIndex : 0;
-    if (selectedSourceIndex > 0) {
+    if (!isLive && selectedSourceIndex > 0) {
         log.info(`使用指定的播放源索引: ${selectedSourceIndex}`);
         // 修改播放列表中的源索引
         playList[currentIndex].playLink = createProxyPlaybackUrl(
@@ -372,7 +395,7 @@ async function startPlayback({ id, sourceIndex }: PlayRequest): Promise<void> {
         // },
         extraArgs: mpvArgs,
         debug: true,
-        onEvent: eventHandler(fnapi),
+        onEvent: eventHandler(fnapi, playList),
         onVolumeChange: fnConfig.setMpvVolume,
     };
 

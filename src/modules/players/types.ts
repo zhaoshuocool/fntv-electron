@@ -19,6 +19,8 @@ export interface PlayItem {
     playLink: string;
     /** 直播播放项：不写进度、不下载字幕 */
     live?: boolean;
+    /** 直播线路在排序后列表中的位置（Go proxy 的 sourceIndex） */
+    sourceIndex?: number;
 }
 
 // 播放状态数据
