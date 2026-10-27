@@ -88,17 +88,29 @@ type Item struct {
 
 // PlayInfo 播放信息接口
 type PlayInfo struct {
-	GrandGUID    string     `json:"grand_guid"`
-	GUID         string     `json:"guid"`
-	ParentGUID   string     `json:"parent_guid"`
-	PlayConfig   PlayConfig `json:"play_config"`
-	TS           int        `json:"ts"`
-	Type         string     `json:"type"`
-	VideoGUID    string     `json:"video_guid"`
-	AudioGUID    string     `json:"audio_guid"`
-	SubtitleGUID string     `json:"subtitle_guid"`
-	MediaGUID    string     `json:"media_guid"`
-	Item         Item       `json:"item"`
+	GrandGUID    string        `json:"grand_guid"`
+	GUID         string        `json:"guid"`
+	ParentGUID   string        `json:"parent_guid"`
+	PlayConfig   PlayConfig    `json:"play_config"`
+	TS           int           `json:"ts"`
+	Type         string        `json:"type"`
+	VideoGUID    string        `json:"video_guid"`
+	AudioGUID    string        `json:"audio_guid"`
+	SubtitleGUID string        `json:"subtitle_guid"`
+	MediaGUID    string        `json:"media_guid"`
+	Item         Item          `json:"item"`
+	LiveChannels []LiveChannel `json:"live_channels,omitempty"`
+}
+
+// LiveChannel 直播线路（IPTV 源），Path 是可直接播放的 URL
+type LiveChannel struct {
+	GUID      string `json:"guid"`
+	Path      string `json:"path"`
+	FileName  string `json:"file_name"`
+	Type      int    `json:"type"`
+	SortNum   int    `json:"sort_num"`
+	CanPlay   int    `json:"can_play"`
+	PlayError string `json:"play_error"`
 }
 
 // WatchedData 已观看状态数据

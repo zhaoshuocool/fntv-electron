@@ -105,9 +105,30 @@ func PlayVideoHandler(c *gin.Context, sessions *PlaybackSessionStore) {
 
 	fnApi := fnapi.NewApiService(session.Domain, session.Token, session.SkipVerify, session.AccessCookie)
 	resp, err := fnApi.GetStreamListCached(params.ItemGuid)
-	if err != nil || !resp.Success || len(resp.Data.VideoStreams) == 0 {
+	if err != nil || !resp.Success {
 		logger.Errorf("获取播放信息失败或为空: %v", err)
 		c.JSON(500, gin.H{"error": "Failed to get play info"})
+		return
+	}
+
+	// 直播频道没有视频流：走直播线路透传分支
+	if len(resp.Data.VideoStreams) == 0 {
+		info, err := fnApi.GetPlayInfoCached(params.ItemGuid)
+		if err != nil || !info.Success || info.Data.Type != "LiveChannel" {
+			logger.Errorf("直播项解析失败: %v", err)
+			c.JSON(500, gin.H{"error": "Failed to get play info"})
+			return
+		}
+
+		target := SelectLiveChannel(info.Data, int(params.SourceIndex))
+		if target == nil {
+			logger.Warnf("直播频道没有可播放线路: itemGuid=%s", params.ItemGuid)
+			c.JSON(404, gin.H{"error": "no playable live line"})
+			return
+		}
+
+		logger.Infof("直播线路透传 | itemGuid: %s | 线路: %s", params.ItemGuid, target.FileName)
+		ServeLive(c, target, utils.PassthroughHeaders(c.Request), newLiveTransport(session.SkipVerify))
 		return
 	}
 
