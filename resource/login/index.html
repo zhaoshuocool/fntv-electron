@@ -967,6 +967,24 @@
                 <input type="text" id="proxyUrlInput" placeholder="https://ghfast.top" />
             </div>
             <div class="proxy-switch-row">
+                <span>直播走代理</span>
+                <label class="proxy-switch">
+                    <input type="checkbox" id="liveProxyEnabledSwitch">
+                    <span class="proxy-slider"></span>
+                </label>
+            </div>
+            <div class="proxy-url-row">
+                <label for="liveProxyUrlInput">直播代理地址:</label>
+                <input type="text" id="liveProxyUrlInput" placeholder="http://127.0.0.1:7890，留空则用系统代理" />
+            </div>
+            <div class="proxy-switch-row">
+                <span>跟随系统代理</span>
+                <label class="proxy-switch">
+                    <input type="checkbox" id="liveProxyFollowSystemSwitch">
+                    <span class="proxy-slider"></span>
+                </label>
+            </div>
+            <div class="proxy-switch-row">
                 <span>使用 MPV 播放</span>
                 <label class="proxy-switch">
                     <input type="checkbox" id="hideOriginalPlayButtonSwitch" checked>
@@ -1037,6 +1055,9 @@
         const proxyUrlInput = document.getElementById('proxyUrlInput');
         const proxySaveBtn = document.getElementById('proxySaveBtn');
         const hideOriginalPlayButtonSwitch = document.getElementById('hideOriginalPlayButtonSwitch');
+        const liveProxyEnabledSwitch = document.getElementById('liveProxyEnabledSwitch');
+        const liveProxyUrlInput = document.getElementById('liveProxyUrlInput');
+        const liveProxyFollowSystemSwitch = document.getElementById('liveProxyFollowSystemSwitch');
         
         let historyData = [];
         let confirmCallback = null;
@@ -1570,6 +1591,7 @@
             ipcRenderer.send('get-download-proxy');
             // 获取当前播放方式
             ipcRenderer.send('get-play-button-config');
+            ipcRenderer.send('get-live-proxy-config');
         }
 
         function toggleProxyPanel() {
@@ -1593,6 +1615,13 @@
 
             // 保存播放方式
             ipcRenderer.send('set-play-button-config', { hideOriginalPlayButton });
+            
+            // 保存直播代理（只对直播上游生效）
+            ipcRenderer.send('set-live-proxy-config', {
+                enabled: liveProxyEnabledSwitch.checked,
+                proxyUrl: liveProxyUrlInput.value.trim(),
+                followSystem: liveProxyFollowSystemSwitch.checked
+            });
             
             // 显示保存状态
             const originalText = proxySaveBtn.textContent;
@@ -1628,6 +1657,23 @@
         });
 
         // 监听播放方式响应
+        // 监听直播代理响应（默认关，空地址保持空）
+        ipcRenderer.on('live-proxy-info', (event, data) => {
+            if (data) {
+                liveProxyEnabledSwitch.checked = data.enabled === true;
+                liveProxyUrlInput.value = data.proxyUrl || '';
+                liveProxyFollowSystemSwitch.checked = data.followSystem === true;
+            }
+        });
+
+        ipcRenderer.on('live-proxy-set', (event, data) => {
+            if (data && data.success) {
+                window.log.info('直播代理设置保存成功');
+            } else {
+                window.log.error('直播代理设置保存失败:', data.error);
+            }
+        });
+
         ipcRenderer.on('play-button-config-info', (event, data) => {
             if (data) {
                 hideOriginalPlayButtonSwitch.checked = data.hideOriginalPlayButton !== false;

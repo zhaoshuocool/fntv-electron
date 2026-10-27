@@ -121,3 +121,23 @@ test('the live proxy settings are reachable over IPC with defaults kept off', ()
         assert.match(preload, new RegExp(`'${channel}'`), `preload allowlist missing ${channel}`);
     }
 });
+
+test('the settings panel exposes the live proxy switch without inheriting the download proxy defaults', () => {
+    const loginPage = fs.readFileSync(
+        path.join(__dirname, '..', 'resource', 'login', 'index.html'),
+        'utf8',
+    );
+
+    assert.match(loginPage, /id="liveProxyEnabledSwitch"/);
+    assert.match(loginPage, /id="liveProxyUrlInput"/);
+    assert.match(loginPage, /id="liveProxyFollowSystemSwitch"/);
+
+    assert.match(loginPage, /ipcRenderer\.send\('get-live-proxy-config'\)/);
+    assert.match(loginPage, /ipcRenderer\.send\('set-live-proxy-config', \{\s*enabled: liveProxyEnabledSwitch\.checked,\s*proxyUrl: liveProxyUrlInput\.value\.trim\(\),\s*followSystem: liveProxyFollowSystemSwitch\.checked\s*\}\)/);
+
+    // 面板显示的必须是保存过的值，默认关；空地址不能套用下载代理的 ghfast 默认
+    assert.match(loginPage, /liveProxyEnabledSwitch\.checked = data\.enabled === true/);
+    assert.match(loginPage, /liveProxyUrlInput\.value = data\.proxyUrl \|\| ''/);
+    assert.match(loginPage, /liveProxyFollowSystemSwitch\.checked = data\.followSystem === true/);
+    assert.doesNotMatch(loginPage, /set-live-proxy-config[\s\S]{0,200}ghfast/);
+});
